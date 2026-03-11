@@ -44,7 +44,7 @@ nutrientConsumption = .1
 # how much nutrient for reproduction
 K_reproduction = 50
 
-bacteria_indices = [N ** 2 // 2]
+bacteria_indices = [N ** 2 // 2 + N // 2]
 bacteria = np.zeros(N ** 2, dtype=np.bool_)
 bacteria[bacteria_indices[0]] = True
 
@@ -83,21 +83,26 @@ def simulationStep():
             deathNote.append(i)
             
             continue
+        
+        region = neighbourhood + b_pos
 
-        # probability of reproduction
+        # don't move outside domain
+        isValid = (region >= 0) & (region < N ** 2)
+        region = region[isValid]
+
+        # prevent wrapping
+        x = b_pos % N
+        xRegion = region % N
+        region = region[np.abs(x - xRegion) < 5]
+        
+
+        # don't move on top of other bacteria
+        notOccupied = ~bacteria[region]
+
         p_reproduction = 0.01 * monod(nutrients[b_pos], nutrientConsumption)
-
+        
         # check if reproduce
         if (np.random.random() < p_reproduction):
-            region = neighbourhood[neighbourhood != 0] + b_pos
-
-            # don't move outside domain
-            isValid = (region >= 0) & (region < N ** 2)
-            region = region[isValid]
-
-            # don't move on top of other bacteria
-            notOccupied = bacteria[region] == False
-
             region = region[notOccupied]
 
             if (np.shape(region)[0] > 0):
@@ -107,18 +112,8 @@ def simulationStep():
 
         # otherwise move to more food
         else:
-            region = neighbourhood + b_pos
-
-            # don't move outside domain
-            isValid = (region >= 0) & (region < N ** 2)
-            region = region[isValid]
-
-            # don't move on top of other bacteria
-            notOccupied = bacteria[region] == False
-
-            # exclude own position
+            # include probability of remaining stationary
             notOccupied[0] = True
-
             region = region[notOccupied]
 
             if (np.shape(region)[0] > 0):
@@ -142,7 +137,7 @@ nutrients_2D = np.reshape(nutrients, (N, N), order='F')
 bacteria_2D = np.reshape(bacteria, (N, N), order='F')
 plot = np.copy(nutrients_2D)
 plot[bacteria_2D] = np.nan
-im = ax.imshow(plot, vmin=0, vmax=initNutrient)
+im = ax.imshow(plot, vmin=0, vmax=initNutrient, cmap="winter")
 
 def update(frame):
     simulationStep()
