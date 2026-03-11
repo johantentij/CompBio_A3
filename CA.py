@@ -58,7 +58,7 @@ neighbourhood = np.array([
     N-1,
     1,
     -N+1,
-    N-1
+    -N-1
 ])
 
 
