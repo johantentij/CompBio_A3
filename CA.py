@@ -26,8 +26,18 @@ D2_2 = sp.kron(I, D2) + sp.kron(D2, I)
 
 nutrients = initNutrient * np.ones(N ** 2, dtype=np.float64)
 
+nutrientSource = 1e-1
+# degradation; set equilibrium at initNutrient
+nutrientDegradation = nutrientSource / initNutrient
+def dNutrients_dt(nutrients):
+    return D * D2_2.dot(nutrients) + nutrientSource - nutrients * nutrientDegradation
+
 def updateNutrients(nutrients):
-    nutrients += dt * D * D2_2.dot(nutrients)
+    # modified euler
+    k1 = dNutrients_dt(nutrients)
+    k2 = dNutrients_dt(nutrients + k1 * dt)
+
+    nutrients += .5 * dt * (k1 + k2)
 
     nutrients[nutrients < 0] = 0
 
@@ -138,6 +148,9 @@ bacteria_2D = np.reshape(bacteria, (N, N), order='F')
 plot = np.copy(nutrients_2D)
 plot[bacteria_2D] = np.nan
 im = ax.imshow(plot, vmin=0, vmax=initNutrient, cmap="winter")
+
+cbar = plt.colorbar(im, ax=ax)
+cbar.set_label("Nutrient concentration")
 
 def update(frame):
     simulationStep()
