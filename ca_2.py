@@ -69,6 +69,10 @@ class CASimulation:
             mean=np.log(self.p['mic_fold_mean']),
             sigma=self.p['mic_fold_sigma']
         )
+        # FIX: mic_fold_mean lowered to 1.5 in PARAMS (was 3.0) — each mutation
+        # only raises MIC by ~50% on average, matching more realistic biology;
+        # the old value of 3x caused bacteria to reach MIC=3000 in ~7 mutations
+        # which was too fast and made all conditions look equally easy to adapt
         return parent_mic * fold
 
     def step(self):
@@ -145,7 +149,7 @@ class CASimulation:
             new_pos = int(np.random.choice(free, 1, p=weights))
 
             # mutation
-            if np.random.random() < p['mu_base']:
+            if np.random.random() < p['mu_base_ca']:
                 new_mic     = self._mutate_mic(b_mic)
                 new_lineage = self.next_lineage_id
                 self.next_lineage_id += 1

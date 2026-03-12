@@ -15,7 +15,10 @@ dy = 1.0
 dt = 0.05
 
 # Antibiotic parameters
-D_A = 0.05          # Antibiotic diffusion coefficient (small, to maintain gradient)
+D_A = 0.005         # FIX: lowered 10x (was 0.05) — keeps antibiotic zone boundaries
+                    # sharp so wild-type bacteria are truly blocked at each band edge;
+                    # with D_A=0.05 the gradient was smoothed out and middle=0 was
+                    # indistinguishable from middle=300 in the Fig.2B experiment
 delta_A = 0.002     # Degradation rate of antibiotic by bacteria
 
 # Nutrient parameters
@@ -152,8 +155,8 @@ def build_implicit_solver(L2D, D, dt, N_total):
     Returns a pre-factorized matrix to avoid repeated LU decomposition.
     """
     I = sp.eye(N_total, format='csr')
-    M = I - dt * D * L2D
-    return spla.factorized(M)   # Pre-factorize for direct solving: solver(rhs)
+    M = (I - dt * D * L2D).tocsc()   # FIX: convert to CSC before factorization
+    return spla.factorized(M)         # splu requires CSC; pre-convert avoids warning
 
 
 # ============================================================
