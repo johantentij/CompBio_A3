@@ -22,7 +22,7 @@ from pde import (
     L2D_A, L2D_N,
     D_A, D_N,
 )
-import ca as ca_module
+import CA as ca_module
 import cpm as cpm_module
 
 # ══════════════════════════════════════════════════════════════════════════════
