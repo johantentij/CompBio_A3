@@ -462,6 +462,39 @@ def plot_results(ca_results, cpm_results, ca_calib, cpm_calib):
     print(f"\nSaved: {out}")
     plt.show()
 
+def debug_plot_antibiotic(middle_conc=30, steps=100):
+    """
+    Run a short simulation and plot the antibiotic field
+    after `steps` timesteps.
+    """
+    np.random.seed(0)
+
+    # initial fields
+    A       = build_antibiotic_field(middle_conc)
+    A_bl    = A[:, 0].copy()
+    A_br    = A[:, -1].copy()
+    N_field = init_nutrients(Nx, Ny)
+
+    # PDE solvers
+    sol_A = build_implicit_solver(L2D_A, PARAMS['D_A'], PARAMS['dt'], Nx * Ny)
+    sol_N = build_implicit_solver(L2D_N, PARAMS['D_N'], PARAMS['dt'], Nx * Ny)
+
+    # create CA simulation
+    sim = ca_module.CASimulation(PARAMS, A, N_field, sol_A, sol_N, A_bl, A_br)
+
+    # run some steps
+    for _ in range(steps):
+        sim.step()
+
+    # plot antibiotic field
+    plt.figure(figsize=(6,4))
+    plt.imshow(A, origin='lower', aspect='auto')
+    plt.colorbar(label="Antibiotic concentration")
+    plt.title(f"Antibiotic field after {steps} steps (middle={middle_conc}x MIC)")
+    plt.xlabel("x")
+    plt.ylabel("y")
+    plt.tight_layout()
+    plt.show()
 
 # ══════════════════════════════════════════════════════════════════════════════
 
