@@ -5,6 +5,9 @@ import scipy.sparse as sp
 
 from numba import njit
 
+from joblib import Parallel, delayed
+import time
+
 N_x = 300
 N_y = 600
 dx = 1
@@ -96,19 +99,22 @@ transitionWidth = 20
 
 detectorThresholds = np.empty(steps, dtype=np.int32)
 
-def makeAntioboticConcentrations(transitionRatio=.1):
-    antibiotic[:, :] = 1e-2
+def makeAntioboticConcentrations(ratio):
+    # Create a FRESH array for this specific worker, rather than editing a global one
+    local_antibiotic = 1e-2 * np.ones((N_x, N_y), dtype=np.float64)
+    local_thresholds = np.empty(steps, dtype=np.int32)
+    
     for i in range(1, steps):
         prevConcentration = baseConcentration * (i - 1) + 1e-2
         targetConcentration = baseConcentration * i + 1e-2
 
-        interConcentration = prevConcentration + (targetConcentration - prevConcentration) * transitionRatio
-        antibiotic[:, i * N_y // steps - transitionWidth:] = interConcentration
-        antibiotic[:, i * N_y // steps:] = targetConcentration
+        interConcentration = prevConcentration + (targetConcentration - prevConcentration) * ratio
+        local_antibiotic[:, i * N_y // steps - transitionWidth:] = interConcentration
+        local_antibiotic[:, i * N_y // steps:] = targetConcentration
 
-        detectorThresholds[i] = .5 * (i * N_y // steps - transitionWidth + (i + 1) * N_y // steps)
-
-makeAntioboticConcentrations(transitionRatio=0.5)
+        local_thresholds[i] = int(.5 * (i * N_y // steps - transitionWidth + (i + 1) * N_y // steps))
+        
+    return local_antibiotic, local_thresholds
 
 ### genes
 p_mutation = 3e-5
@@ -261,243 +267,89 @@ def bacteriaStep(nutrients, bacteria, bacteria_indices, antibiotic, K_antibiotic
 
         i += 1
 
-    return aliveCount, genomeCounter
+    return aliveCount, genomeCounter       
 
+max_iterations = int(2e5) 
 
-
-### plot full CA
-# fig, (ax1, ax2) = plt.subplots(2, 1, figsize=(8, 10))
-
-# plot_nutrients = np.copy(nutrients)
-# plot_nutrients[bacteria] = np.nan
-# im1 = ax1.imshow(plot_nutrients, vmin=0, vmax=initNutrient, cmap="winter", origin='lower')
-# ax1.set_title("Nutrient Concentration")
-# plt.colorbar(im1, ax=ax1, label="Nutrients")
-
-# gene_map = np.full((N_x, N_y), np.nan)
-# gene_map[bacteria_indices[0, 0], bacteria_indices[0, 1]] = K_antibiotic[0]
-
-# im2 = ax2.imshow(gene_map, cmap="rainbow", origin='lower', vmin=K_antibiotic[0], vmax=80)
-# ax2.set_title("Gene: Antibiotic Resistance (K_antibiotic)")
-# cbar2 = plt.colorbar(im2, ax=ax2, label="Resistance Level")
-
-# fig.tight_layout()
-
-# frameStep = 50
-
-
-# detectorTimes = np.empty(steps)
-# def update(frame):
-#     global aliveCount, nutrients, bacteria, genomeCounter
-
-#     for _ in range(frameStep):
-#         # diffuse nutrients
-#         nutrients = updateNutrients(nutrients)
-
-#         # dinner time
-#         nutrients[bacteria] -= nutrientConsumption
-
-#         # increment CA
-#         aliveCount, genomeCounter = bacteriaStep(nutrients, bacteria, bacteria_indices, antibiotic, K_antibiotic, aliveCount, genomeIDs, genomeCounter)
-
-#     plot_n = np.copy(nutrients)
-#     plot_n[bacteria] = np.nan
-#     im1.set_data(plot_n)
-
-#     # make gene plot
-#     current_gene_map = np.full((N_x, N_y), np.nan)
+def simulate_ratio(ratio):
+    print(f"Starting simulation for ratio: {ratio}")
     
-#     if aliveCount > 0:
-#         active_indices = bacteria_indices[:aliveCount]
-#         active_genes = K_antibiotic[:aliveCount]
-        
-#         for idx in range(aliveCount):
-#             gx, gy = active_indices[idx]
-#             current_gene_map[gx, gy] = active_genes[idx]
+    # 1. Initialize LOCAL state for this specific process
+    local_nutrients = initNutrient * np.ones((N_x, N_y), dtype=np.float64)
+    local_antibiotic, local_thresholds = makeAntioboticConcentrations(ratio)
     
-#     im2.set_data(current_gene_map)
+    local_bacteria_indices = np.empty((N_x * N_y, 2), dtype=np.int32)
+    local_bacteria_indices[0] = [N_x // 2, 0]
+    local_aliveCount = 1
+
+    local_bacteria = np.zeros((N_x, N_y), dtype=np.bool_)
+    local_bacteria[local_bacteria_indices[0, 0], local_bacteria_indices[0, 1]] = True
     
-#     return [im1, im2]
+    local_K_antibiotic = np.empty(N_x * N_y, dtype=np.float64) 
+    local_K_antibiotic[0] = 5
 
-# ani = animation.FuncAnimation(
-#     fig, update, interval=1, cache_frame_data=False, blit=False
-# ) 
+    local_genomeIDs = np.empty((N_x * N_y, 4), dtype=np.int32)
+    local_genomeCounter = 0
+    local_genomeIDs[0, :] = [local_genomeCounter, local_genomeCounter, local_bacteria_indices[0, 0], local_bacteria_indices[0, 1]]
 
-# plt.show()
-
-### plot history map
-# downscale = 5
-# N_x_red = N_x // downscale
-# N_y_red = N_y // downscale
-
-# history = np.empty((N_x_red, N_y_red), dtype=np.float64)
-# history[:, :] = np.nan
-# historyTime = 0
-
-# frameStep = 50
-# timeCycle = 2000
-# def updateHistory():
-#     global historyTime
-
-#     for x in range(N_x_red):
-#         for y in range(N_y_red):
-#             hasBacteria = np.sum(bacteria[x * downscale:(x+1) * downscale, y * downscale: (y+1) * downscale]) > 0
-
-#             if hasBacteria and np.isnan(history[x, y]):
-#                 history[x, y] = historyTime % timeCycle
-#                 historyTime += 1
-
-#     return
-
-# genomeTree = [genomeIDs[0, :]]
-# genomeLines = []
-
-# substantialThreshold = 50
-
-# def updateGenomeTree():
-#     activeGenomes = genomeIDs[:aliveCount]
-#     selfIDs = activeGenomes[:, 1]
-#     _, uniqueIndices, uniqueCounts = np.unique(selfIDs, return_index=True, return_counts=True)
-
-#     uniqueIndices = uniqueIndices[uniqueCounts > substantialThreshold]
-
-#     genomes = activeGenomes[uniqueIndices]
-
-#     for genome in genomes:
-#         self = genome[1]
-
-#         isNew = True
-#         for genomeComp in genomeTree:
-#             selfComp = genomeComp[1]
-
-#             if (self == selfComp):
-#                 isNew = False
-
-#                 break
-
-#         if isNew:
-#             # find parent
-#             parent = genome[0]
-
-#             for genomeComp in genomeTree:
-#                 selfComp = genomeComp[1]
-
-#                 if (parent == selfComp):
-#                     xParent = genomeComp[2] // downscale
-#                     yParent = genomeComp[3] // downscale
-
-#                     xChild = genome[2] // downscale
-#                     yChild = genome[3] // downscale
-
-#                     genomeLines.append([[xParent, xChild], [yParent, yChild]])
-
-#                     break
-
-#             genomeTree.append(genome)
-
-
-# updateHistory()
-
-# fig, ax = plt.subplots()
-
-# im = ax.imshow(history, vmin=0, vmax=timeCycle, cmap="hsv")
-
-# def update(frame):
-#     global nutrients, bacteria, aliveCount, genomeCounter
-
-#     for _ in range(frameStep):
-#         # diffuse nutrients
-#         nutrients = updateNutrients(nutrients)
-
-#         # dinner time
-#         nutrients[bacteria] -= nutrientConsumption
-
-#         # increment CA
-#         aliveCount, genomeCounter = bacteriaStep(
-#             nutrients, 
-#             bacteria, bacteria_indices, 
-#             antibiotic, K_antibiotic, 
-#             aliveCount, 
-#             genomeIDs, genomeCounter
-#         )
-
-#     updateHistory()
-#     updateGenomeTree()
-
-#     for xVals, yVals in genomeLines:
-#         ax.plot(yVals, xVals, color="white")
-
-#     im.set_data(history)
-
-#     return [im]
-
-# ani = animation.FuncAnimation(
-#     fig, update, interval=1, cache_frame_data=False, blit=False
-# ) 
-
-# plt.show()
-
-
-
-### adaptation time test
-max_iterations = int(2e5)
-
-
-ratios = [.2, .4, .6, .8]
-meanTimes = []
-
-for ratio in ratios:
     threshold_times = np.empty(steps)
     threshold_times[:] = np.nan
     furthest = 0
 
-    makeAntioboticConcentrations(ratio)
-    bacteria_indices = np.empty((N_x * N_y, 2), dtype=np.int32)
-    bacteria_indices[0] = [N_x // 2, 0]
-    aliveCount = 1
-
-    bacteria = np.zeros((N_x, N_y), dtype=np.bool_)
-    bacteria[bacteria_indices[0, 0], bacteria_indices[0, 1]] = True
-    K_antibiotic[0] = 5
-
-    genomeIDs = np.empty((N_x * N_y, 4), dtype=np.int32)
-    genomeCounter = 0
-    # genome ID: [parent, self, firstX, firstY]
-    genomeIDs[0, :] = [genomeCounter, genomeCounter, bacteria_indices[0, 0], bacteria_indices[0, 1]]
-
+    # 2. Run the simulation loop
     for i in range(max_iterations):
         # diffuse nutrients
-        nutrients = updateNutrients(nutrients)
+        local_nutrients = updateNutrients(local_nutrients)
 
         # dinner time
-        nutrients[bacteria] -= nutrientConsumption
+        local_nutrients[local_bacteria] -= nutrientConsumption
 
         # increment CA
-        aliveCount, genomeCounter = bacteriaStep(
-            nutrients, 
-            bacteria, bacteria_indices, 
-            antibiotic, K_antibiotic, 
-            aliveCount, 
-            genomeIDs, genomeCounter
+        local_aliveCount, local_genomeCounter = bacteriaStep(
+            local_nutrients, 
+            local_bacteria, local_bacteria_indices, 
+            local_antibiotic, local_K_antibiotic, 
+            local_aliveCount, 
+            local_genomeIDs, local_genomeCounter
         )
 
-        if (np.sum(bacteria[:, detectorThresholds[furthest]:]) > 0):
+        # Check thresholds
+        if (np.sum(local_bacteria[:, local_thresholds[furthest]:]) > 0):
             threshold_times[furthest] = i
             furthest += 1
-
-            print("something")
+            print(f"Ratio {ratio:.2f}: Reached zone {furthest}/{steps} at step {i}")
 
         if (furthest >= steps):
-            print("ended succesfully")
+            print("succesful ending")
             break
 
+    # 3. Process and return results
     interTimes = np.diff(threshold_times)
     interTimes = interTimes[~np.isnan(interTimes)] 
+    
+    if len(interTimes) > 0:
+        return 1 / np.mean(interTimes)
+    else:
+        return np.nan # Handle cases where it never crossed a threshold
+    
 
-    meanTimes.append(1 / np.mean(interTimes))
-
-plt.plot(ratios, meanTimes)
-plt.xlabel("Intermediate concentration ratio")
-plt.ylabel("1 / mean adaptation time")
-plt.show()
+# The if __name__ == '__main__': block is still highly recommended 
+# to prevent recursive spawning on Windows and macOS.
+if __name__ == '__main__':
+    ratios = [.2, .3, .4, .5, .6, .7]
+    
+    print("Starting parallel simulation using joblib...")
+    t0 = time.time()
+    
+    # n_jobs=-1 tells joblib to use ALL available CPU cores.
+    # delayed() wraps your function so it can be distributed to the workers.
+    meanTimes = Parallel(n_jobs=-1)(delayed(simulate_ratio)(ratio) for ratio in ratios)
         
+    print(f"Total time taken: {time.time() - t0:.2f} seconds")
+
+    # Plot results
+    plt.plot(ratios, meanTimes, marker='o')
+    plt.xlabel("Intermediate concentration ratio")
+    plt.ylabel("1 / mean adaptation time")
+    plt.grid(True)
+    plt.show()
