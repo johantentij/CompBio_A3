@@ -378,20 +378,25 @@ def run_compare():
             redraw_contours(ax, sim_ca.A)
 
         # ── CPM ──
-        rho_cpm = cpm_module.get_rho_grid()
-        Af = sol_A_cpm(A_cpm.ravel())
-        Nf = sol_N_cpm(N_cpm.ravel())
-        Nf = np.maximum(
-            Nf - PARAMS['dt'] * PARAMS['alpha'] * rho_cpm.ravel()
-            * Nf / (PARAMS['K_N'] + Nf), 0.0
-        )
-        A2 = Af.reshape(Ny, Nx)
-        A2[:, 0]  = A_bl_cpm
-        A2[:, -1] = A_br_cpm
-        A_cpm[:]  = A2
-        N_cpm[:]  = Nf.reshape(Ny, Nx)
-
         for _ in range(PARAMS['steps_per_frame']):
+            # --- 1. Update PDE fields ---
+            rho_flat = cpm_module.get_rho_grid().ravel()
+
+            A_diffused = sol_A_cpm(A_cpm.ravel())
+            A_flat = A_diffused - PARAMS['dt'] * PARAMS['delta_A'] * rho_flat * A_diffused
+            A_flat = np.maximum(A_flat, 0.0)
+
+            N_diffused = sol_N_cpm(N_cpm.ravel())
+            N_flat = N_diffused - PARAMS['dt'] * PARAMS['alpha'] * rho_flat * (N_diffused / (PARAMS['K_N'] + N_diffused))
+            N_flat = np.maximum(N_flat, 0.0)
+
+            A_2d = A_flat.reshape(Ny, Nx)
+            A_2d[:, 0]  = A_bl_cpm
+            A_2d[:, -1] = A_br_cpm
+            A_cpm[:]    = A_2d
+            N_cpm[:]    = N_flat.reshape(Ny, Nx)
+
+            # --- 2. Update CPM state ---
             cpm_module.mcs_step(N_cpm, A_cpm)
             cpm_module.do_mutations()
             cpm_module.kill_exposed_cells(A_cpm)

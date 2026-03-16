@@ -1,17 +1,3 @@
-"""
-fig2b.py
-Reproduces Fig.2B from Baym et al. 2016:
-  Adaptation rate (1 / t_adapt) vs intermediate antibiotic concentration.
-  Runs both CA and CPM side by side for comparison.
-
-Layout:
-  Antibiotic field: [ 0 | middle_conc | 3000 | middle_conc | 0 ]
-  middle_conc swept: 0, 3, 30, 300 x MIC
-
-Usage:
-  python fig2b.py
-"""
-
 import numpy as np
 import matplotlib.pyplot as plt
 
@@ -22,7 +8,7 @@ from pde import (
     L2D_A, L2D_N,
     D_A, D_N,
 )
-import ca as ca_module
+import ca_2 as ca_module
 import cpm as cpm_module
 
 # ══════════════════════════════════════════════════════════════════════════════
@@ -37,7 +23,7 @@ CHECK_EVERY  = 10                 # check front position every N steps
 # shared CA / CPM parameters
 PARAMS = {
     'dt'                  : dt,
-    'D_A'                 : 0.005,     # FIX: lowered 10x, must match pde.py
+    'D_A'                 : 0.005,
     'delta_A'             : 0.002,
     'MIC_base'            : MIC_base,
     'D_N'                 : D_N,
@@ -46,16 +32,17 @@ PARAMS = {
     'nutrient_consumption': 0.005,
     # CA
     'p_repro_base'        : 0.08,
-    # mutation (shared)
-    'mu_base'             : 0.0003,    # FIX: lowered 10x — prevents mutation explosion
-    'mic_fold_mean'       : 1.5,       # FIX: lowered from 3.0 — more realistic per-step gain
-    'mic_fold_sigma'      : 0.3,       # FIX: tightened from 0.5
+    # mutation
+    'mu_base_ca'          : 0.0003,
+    'mu_base_cpm'         : 0.0003,
+    'mic_fold_mean'       : 1.5,
+    'mic_fold_sigma'      : 0.3,
     # CPM energy
     'J_medium'            : 8.0,
     'J_diff'              : 16.0,
     'J_same'              : 2.0,
     'lambda_V'            : 0.5,
-    'V_target'            : 25,        # FIX: restored to 25 — cells must grow before competing
+    'V_target'            : 25,
     'chi'                 : 3.0,
     'T_cpm'               : 5.0,
 }
@@ -148,7 +135,7 @@ def _reset_cpm(params):
     cpm_module.V_target       = params['V_target']
     cpm_module.chi            = params['chi']
     cpm_module.T              = params['T_cpm']
-    cpm_module.mu_base        = params['mu_base']
+    cpm_module.mu_base        = params['mu_base_cpm']
     cpm_module.mic_fold_mean  = params['mic_fold_mean']
     cpm_module.mic_fold_sigma = params['mic_fold_sigma']
 
