@@ -160,6 +160,10 @@ def bacteriaStep(nutrients, bacteria, bacteria_indices, antibiotic, K_antibiotic
             genomeIDs[i] = genomeIDs[aliveCount - 1]
             aliveCount -= 1
 
+
+            if aliveCount == 0:
+                return aliveCount, genomeCounter
+
             # rerun for this index, since it has been changed to different bacterium
             # (no i += 1)
             
