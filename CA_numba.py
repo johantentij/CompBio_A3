@@ -132,7 +132,12 @@ def bacteriaStep(nutrients, bacteria, bacteria_indices, antibiotic, K_antibiotic
 
         # die if not enough food or from antibiotic
         x = antibiotic[b_pos[0], b_pos[1]]
-        p_death = 0.1 * x ** n_antiobiotic / (x ** n_antiobiotic + K_antibiotic[i] ** n_antiobiotic)
+        den = x ** n_antiobiotic + K_antibiotic[i] ** n_antiobiotic
+
+        if den == 0:
+            p_death = 0.0
+        else:
+            p_death = 0.1 * x ** n_antiobiotic / den
 
         if (nutrients[b_pos[0], b_pos[1]] <= 0 or 
             np.random.random() < p_death):
@@ -143,6 +148,10 @@ def bacteriaStep(nutrients, bacteria, bacteria_indices, antibiotic, K_antibiotic
             K_antibiotic[i] = K_antibiotic[aliveCount - 1]
             genomeIDs[i] = genomeIDs[aliveCount - 1]
             aliveCount -= 1
+
+
+            if aliveCount == 0:
+                return aliveCount, genomeCounter
 
             # rerun for this index, since it has been changed to different bacterium
             # (no i += 1)
